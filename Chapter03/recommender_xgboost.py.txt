@@ -1,0 +1,85 @@
+# intall miniconda
+!wget -c https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh
+!chmod +x Miniconda3-4.5.4-Linux-x86_64.sh
+!bash ./Miniconda3-4.5.4-Linux-x86_64.sh -b -f -p /usr/local
+
+# install RAPIDS packages
+!conda install -q -y --prefix /usr/local -c conda-forge \
+  -c rapidsai-nightly/label/cuda10.0 -c nvidia/label/cuda10.0 \
+  cudf cuml
+# set environment vars
+import sys, os, shutil
+sys.path.append('/usr/local/lib/python3.6/site-packages/')
+os.environ['NUMBAPRO_NVVM'] = '/usr/local/cuda/nvvm/lib64/libnvvm.so'
+os.environ['NUMBAPRO_LIBDEVICE'] = '/usr/local/cuda/nvvm/libdevice/'
+
+# copy .so files to current working dir
+for fn in ['libcudf.so', 'librmm.so']:
+  shutil.copy('/usr/local/lib/'+fn, os.getcwd())
+
+!conda install scikit-learn
+
+# Load Python libraries and all the dependencies
+
+plt.style.use('ggplot')
+
+auth.authenticate_user()
+
+BUCKET_ID="ml_assets"
+MODEL_BUCKET_NAME="xgboost-model"
+PROJECT_ID="vsmart-iiot-223813"
+DATA_FOLDER="recommendation_system"
+TRAINING_MOVIES_FILE="movilens_data.csv"
+TRAINING_USERS_FILE="user.csv"
+TRAINING_MODEL_FILE= 'model.bst'
+REGION=us-central1
+os.environ["GOOGLE_CLOUD_PROJECT"] = PROJECT_ID
+!gcloud config set project {PROJECT_ID}
+!gsutil cp gs://{BUCKET_ID}/{DATA_FOLDER}/{TRAINING_MOVIES_FILE} {TRAINING_MOVIES_FILE}
+!gsutil cp gs://{BUCKET_ID}/{DATA_FOLDER}/{TRAINING_USERS_FILE} {TRAINING_USERS_FILE}
+
+column_names = ['user_id', 'item_id', 'rating', 'timestamp']
+df = pd.read_csv(TRAINING_USERS_FILE, sep='\t', names=column_names)
+df.head()
+
+movie_titles = pd.read_csv(TRAINING_MOVIES_FILE)
+movie_titles.pop('title')
+movie_titles.head()
+
+df = pd.merge(df, movie_titles, on='item_id')
+df.head()
+print(df.columns)
+
+target = df.pop('rating')
+train_data, test_data, train_labels, test_labels = train_test_split(df, target, test_size = 0.3)
+
+train_labels = pd.to_numeric(train_labels, downcast='integer')
+train_data.head()
+
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import RandomizedSearchCV
+model = xgb.XGBClassifier()
+parameters_grid = { 'learning_rate' : [0.1, 0.2, 0.5], 'max_depth' : [5, 10, 15], 'n_estimators' : [150, 250, 300], 'min_child_weight' : [3, 5, 10] }
+cv = StratifiedShuffleSplit(n_splits = 3,test_size = 0.3)
+grid_cv = RandomizedSearchCV(model, parameters_grid, scoring = 'accuracy', cv = cv)
+train_data.head()
+#train_labels.head()
+
+grid_cv.fit(train_data, train_labels)
+grid_cv.bestestimator
+
+model = xgb.XGBClassifier(learning_rate=0.1, max_depth=15, min_child_weight=5, n_estimators=250)
+model.fit(train_data, train_labels)
+
+# Predicting
+predict_labels = model.predict(test_data)
+print(metrics.classification_report(test_labels, predict_labels))
+
+#save the model
+model.save_model(TRAINING_MODEL_FILE)
+
+#create the bucket
+gsutil mb -l $REGION gs://$MODEL_BUCKET_NAME
+
+#upload to google cloud bucket
+gsutil cp $TRAINING_MODEL_FILE gs://$MODEL_BUCKET_NAME/$TRAINING_MODEL_FILE

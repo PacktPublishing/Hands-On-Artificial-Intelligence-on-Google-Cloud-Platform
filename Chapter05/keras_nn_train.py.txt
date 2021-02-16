@@ -1,0 +1,64 @@
+wget 'https://raw.githubusercontent.com/zaidalyafeai/zaidalyafeai.github.io/master/sketcher/mini_classes.txt'
+
+f = open("mini_classes.txt","r")
+# And for reading use
+classes = f.readlines()
+f.close()
+classes = [c.replace('\n','').replace(' ','_') for c in classes]
+
+!mkdir -p data
+import urllib.request
+def download():
+  
+  base = 'https://storage.googleapis.com/quickdraw_dataset/full/numpy_bitmap/'
+  for c in classes:
+    cls_url = c.replace('_', '%20')
+    path = base+cls_url+'.npy'
+    print(path)
+    urllib.request.urlretrieve(path, 'data/'+c+'.npy')
+download()
+# load the data for training the model
+# Commented out IPython magic to ensure Python compatibility.
+import matplotlib.pyplot as plt
+from random import randint
+# %matplotlib inline 
+idx = randint(0, len(x_train))
+plt.imshow(x_train[idx].reshape(28,28)) 
+print(class_names[int(y_train[idx].item())])
+
+# Reshape and normalize
+#image = tf.decode_raw(image_raw, tf.float32)
+#image = tf.reshape(image, [img_width, img_height, 3])
+
+x_train = x_train.reshape(x_train.shape[0], image_size, image_size, 1).astype('float32')
+
+x_test = x_test.reshape(x_test.shape[0], image_size, image_size, 1).astype('float32')
+
+x_train /= 255.0
+x_test /= 255.0
+
+# Convert class vectors to class matrices
+y_train = keras.utils.to_categorical(y_train, num_classes)
+y_test = keras.utils.to_categorical(y_test, num_classes)
+
+# Define model
+model = keras.Sequential()
+model.add(layers.Convolution2D(16, (3, 3),
+                        padding='same',
+                        input_shape=x_train.shape[1:], activation='relu'))
+model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+model.add(layers.Convolution2D(32, (3, 3), padding='same', activation= 'relu'))
+model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+model.add(layers.Convolution2D(64, (3, 3), padding='same', activation= 'relu'))
+model.add(layers.MaxPooling2D(pool_size =(2,2)))
+model.add(layers.Flatten())
+model.add(layers.Dense(128, activation='relu'))
+model.add(layers.Dense(100, activation='softmax')) 
+# Train model
+adam = tf.train.AdamOptimizer()
+model.compile(loss='categorical_crossentropy',
+              optimizer=adam,
+              metrics=['top_k_categorical_accuracy'])
+print(model.summary())
+
+model.fit(x = x_train, y = y_train, validation_split=0.1, batch_size = 256, verbose=2, epochs=5)

@@ -1,0 +1,10 @@
+# Function dependencies, for example:
+# package>=version
+sqlalchemy
+pymysql
+google-cloud
+google-cloud-pubsub
+pandas
+gcsfs
+cloudstorage
+google-cloud-storage

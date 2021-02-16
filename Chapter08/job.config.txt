@@ -1,0 +1,26 @@
+{
+  "jobId": string,               //Required: user defined identifier for the job
+  "createTime": string,          //Output Parameter: indicates when a job was created 
+  "startTime": string,           //Output Parameter: indicates when the actual job started running
+  "endTime": string,             //Output Parameter: indicates when the job processing completed
+  "state": enum (State),         //Output Parameter: indicates the state of the job [QUEUED,RUNNING,etc]
+  "errorMessage": string,        //Output Parameter: description of the failed job
+  "labels": {                    //Optional Input Parameter: recommended to be used for organizing 
+    string: string,              //                           and troubleshooting the run-time jobs.   
+    ...
+  },
+  "etag": string,                //Optional Input Parameter: used for preventing job versions from                                                                      overriding each other. 
+  "trainingInput": {             //Required: specifies the input parameters for the training job.  
+    object (TrainingInput)
+  },
+  "predictionInput": {           //Required: specifies the input parameters for the prediction job.  
+    object (PredictionInput)
+  }
+
+  "trainingOutput": {            //Output Parameter: encapsulates the result of the training job
+    object (TrainingOutput)
+  },
+  "predictionOutput": {          //Output Parameter: encapsulates the result of the prediction job
+    object (PredictionOutput)
+  }
+}

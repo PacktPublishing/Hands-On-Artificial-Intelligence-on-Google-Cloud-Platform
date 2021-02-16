@@ -1,0 +1,31 @@
+{
+  "scaleTier": enum (ScaleTier),    //Required: specifies machine types, count of replicas, workers,                                         //          parameter servers
+  "masterType": string,             //Optional: When the scaleTier is set to 'CUSTOM', this parameter                                         //          needs to be set and denotes the type of virtual machine
+  "masterConfig": {                 //Optional: Configuration of the master node
+    object (ReplicaConfig)
+  },
+  "workerType": string,            //Optional: Denotes the type of virtual machine used for the worker
+  "workerConfig": {                //Optional: Configuration of the worker node
+    object (ReplicaConfig)
+  },
+  "parameterServerType": string,   //Optional: Denotes the type of virtual machine used for the parameter                                    //          server
+  "parameterServerConfig": {       //Optional: Configuration of the parameter server. 
+    object (ReplicaConfig)
+  },
+  "workerCount": string,           //Optional: Number of worker nodes used by the training job
+  "parameterServerCount": string,  //Optional: Number of parameter servers
+  "packageUris": [                 //Required: These are the Google Cloud Storage locations for
+    string                         //          the packages containing the training program along with
+  ],                               //          additional dependencies
+  "pythonModule": string,          //Required: The python module to run after importing all the 
+  "args": [                        //          packages and resolving the dependencies 
+    string
+  ],
+  "hyperparameters": {             //Optional: The set of hyper-parameters to be tuned. 
+    object (HyperparameterSpec)
+  },
+  "region": string,               //Required: The compute engine region on which the training job will run
+  "jobDir": string,               //Optional: Output directory where the training results are stored
+  "runtimeVersion": string,       //Optional: API run-time version. This is useful when working in a                                       //          collaborative mode with large teams
+  "pythonVersion": string         //Optional: The version of Python used for the training. 
+}

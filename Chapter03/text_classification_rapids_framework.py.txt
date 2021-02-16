@@ -1,0 +1,98 @@
+# -*- coding: utf-8 -*-
+
+!nvidia-smi
+
+pynvml.nvmlInit()
+handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+# intall miniconda
+!wget -c https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh
+!chmod +x Miniconda3-4.5.4-Linux-x86_64.sh
+!bash ./Miniconda3-4.5.4-Linux-x86_64.sh -b -f -p /usr/local
+
+# install RAPIDS packages
+!conda install -q -y --prefix /usr/local -c conda-forge \
+  -c rapidsai-nightly/label/cuda10.0 -c nvidia/label/cuda10.0 \
+  cudf cuml
+
+# set environment vars
+sys.path.append('/usr/local/lib/python3.6/site-packages/')
+os.environ['NUMBAPRO_NVVM'] = '/usr/local/cuda/nvvm/lib64/libnvvm.so'
+os.environ['NUMBAPRO_LIBDEVICE'] = '/usr/local/cuda/nvvm/libdevice/'
+
+# copy .so files to current working dir
+for fn in ['libcudf.so', 'librmm.so']:
+  shutil.copy('/usr/local/lib/'+fn, os.getcwd())
+
+BUCKET_ID="ml-assets"
+PROJECT_ID="VSMART-IIoT"
+TRAINING_FILE="text_classification_emp.csv"
+TRAINING_DATA_FOLDER="data"
+TRAINING_MODEL_FOLDER="model"
+TRAINING_MODEL_FILE= 'model.bst'
+MODEL_BUCKET_NAME="xgboost-model"
+REGION=us-central1
+os.environ["GOOGLE_CLOUD_PROJECT"] = PROJECT_ID
+bucket = storage.Client().bucket(BUCKET_ID)
+blob = bucket.blob(''.join(["/",TRAINING_DATA_FOLDER, "/", TRAINING_FILE]))
+blob.download_to_filename(TRAINING_FILE)
+
+# load the dataset
+data = open(TRAINING_FILE).read()
+labels, texts = [], []
+for i, line in enumerate(data.split("\n")):
+    content = line.split()
+    labels.append(content[0])
+    texts.append(" ".join(content[1:]))
+
+# create a dataframe using texts and lables
+trainCDF = pd.DataFrame()
+trainCDF['text'] = texts
+trainCDF['label'] = labels
+trainDF = cudf.DataFrame.from_pandas(trainCDF)
+
+train_x, valid_x, train_y, valid_y = model_selection.train_test_split(trainDF['text'], trainDF['label'])
+# label encode the target variable 
+encoder = preprocessing.LabelEncoder()
+train_y = encoder.fit_transform(train_y)
+valid_y = encoder.fit_transform(valid_y)
+
+# characters level tf-idf
+tfidf_vect_ngram_chars = TfidfVectorizer(analyzer='char', token_pattern=r'\w{1,}', ngram_range=(2,3), max_features=5000)
+tfidf_vect_ngram_chars.fit(trainDF['text'])
+xtrain_tfidf_ngram_chars = tfidf_vect_ngram_chars.transform(train_x) 
+xvalid_tfidf_ngram_chars = tfidf_vect_ngram_chars.transform(valid_x)
+
+def train_model(classifier, feature_vector_train, label, feature_vector_valid, is_neural_net=False):
+    # fit the training dataset on the classifier
+    classifier.fit(feature_vector_train, label)
+    # Export the model to a file
+    classifier.save_model(TRAINING_MODEL_FILE)
+
+    # Upload the model to GCS
+    bucket = storage.Client().bucket(BUCKET_ID)
+    blob = bucket.blob('{}/{}/{}'.format(TRAINING_MODEL_FOLDER,
+    datetime.datetime.now().strftime('census_%Y%m%d_%H%M%S'),
+    TRAINING_MODEL_FILE))
+    blob.upload_from_filename(TRAINING_MODEL_FILE)
+    # predict the labels on validation dataset
+    predictions = classifier.predict(feature_vector_valid)
+    
+    if is_neural_net:
+        predictions = predictions.argmax(axis=-1)
+    
+    return metrics.accuracy_score(predictions, valid_y)
+
+param_dist = {'objective':'binary:logistic', 'n_estimators':500, 'tree_method':'gpu_hist'}
+
+# Extereme Gradient Boosting on Character Level TF IDF Vectors
+accuracy = train_model(xgboost.XGBClassifier(**param_dist), xtrain_tfidf_ngram_chars.tocsc(), train_y, xvalid_tfidf_ngram_chars.tocsc())
+print("Xgb, CharLevel Vectors: ", accuracy)
+
+#save the model
+model.save_model(TRAINING_MODEL_FILE)
+
+#create the bucket
+gsutil mb -l $REGION gs://$MODEL_BUCKET_NAME
+
+#upload to google cloud bucket
+gsutil cp $TRAINING_MODEL_FILE gs://$MODEL_BUCKET_NAME/$TRAINING_MODEL_FILE
